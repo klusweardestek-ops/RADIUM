@@ -193,7 +193,7 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
                          <FormInput icon={<Hash size={18} />} label="ISRC (Optional)" name="isrc" value={formData.isrc} onChange={(e) => setFormData({...formData, isrc: e.target.value})} />
                     </div>
                     <FileInput label="Cover Art" file={coverArt} setFile={setCoverArt} accept="image/*" required />
-                    <FileInput label="Audio File" file={audioFile} setFile={setAudioFile} accept="audio/*" required />
+                    <FileInput label="Audio File" file={audioFile} setFile={setAudioFile} accept="audio/mpeg,audio/wav,.mp3,.wav" required />
                 </div>
                 <div className="md:col-span-1 space-y-4 bg-gray-900/50 p-4 rounded-md border border-gray-700">
                     <h3 className="font-bold text-lg text-brand-blue-light">Distribution Platforms</h3>

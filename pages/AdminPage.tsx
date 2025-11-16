@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Profile, Song, SongStatus, UserRole } from '../types';
-import { ShieldCheck, Users, Music, CheckCircle, XCircle, Trash2, Eye, Calendar } from 'lucide-react';
+import { ShieldCheck, Users, Music, CheckCircle, XCircle, Trash2, Eye, Calendar, CreditCard, Mail, Landmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PlatformIcon from '../components/PlatformIcon';
 import { supabase } from '../services/supabaseClient';
@@ -19,6 +19,12 @@ const AdminPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [songToReject, setSongToReject] = useState<Song | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
+    const [editingUser, setEditingUser] = useState<Profile | null>(null);
+    const [payoutDetails, setPayoutDetails] = useState({
+        paypal_email: '',
+        bank_account_iban: '',
+        bank_account_swift: '',
+    });
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -124,6 +130,36 @@ const AdminPage: React.FC = () => {
         }
     };
 
+    const handleEditPayoutsClick = (user: Profile) => {
+        setEditingUser(user);
+        setPayoutDetails({
+            paypal_email: user.paypal_email || '',
+            bank_account_iban: user.bank_account_iban || '',
+            bank_account_swift: user.bank_account_swift || '',
+        });
+    };
+
+    const handleSavePayouts = async () => {
+        if (!editingUser) return;
+
+        const { error } = await supabase
+            .from('profiles')
+            .update({
+                paypal_email: payoutDetails.paypal_email || null,
+                bank_account_iban: payoutDetails.bank_account_iban || null,
+                bank_account_swift: payoutDetails.bank_account_swift || null,
+            })
+            .eq('id', editingUser.id);
+        
+        if (error) {
+            alert(`Failed to update payout details: ${error.message}`);
+        } else {
+            alert('Payout details updated successfully!');
+            setEditingUser(null);
+            loadData();
+        }
+    };
+
     const filteredSongs = songs.filter(song => {
         if (songFilter === 'pending') return song.status === SongStatus.PENDING;
         if (songFilter === 'reviewed') return song.status !== SongStatus.PENDING;
@@ -165,7 +201,7 @@ const AdminPage: React.FC = () => {
                 )}
                 {view === 'users' && (
                     <div className="bg-black/30 backdrop-blur-sm rounded-lg border border-brand-blue/20 p-4">
-                        <UserList users={users} onBanToggle={handleUserBanToggle} />
+                        <UserList users={users} onBanToggle={handleUserBanToggle} onEditPayouts={handleEditPayoutsClick} />
                     </div>
                 )}
             </>
@@ -177,6 +213,15 @@ const AdminPage: React.FC = () => {
                     setReason={setRejectionReason}
                     onConfirm={handleConfirmRejection}
                     onCancel={() => setSongToReject(null)}
+                />
+            )}
+            {editingUser && (
+                <PayoutDetailsModal
+                    user={editingUser}
+                    details={payoutDetails}
+                    setDetails={setPayoutDetails}
+                    onSave={handleSavePayouts}
+                    onCancel={() => setEditingUser(null)}
                 />
             )}
         </div>
@@ -293,11 +338,70 @@ const RejectionModal: React.FC<RejectionModalProps> = ({ song, reason, setReason
     </div>
 );
 
+interface PayoutDetailsModalProps {
+    user: Profile;
+    details: {
+        paypal_email: string;
+        bank_account_iban: string;
+        bank_account_swift: string;
+    };
+    setDetails: (details: PayoutDetailsModalProps['details']) => void;
+    onSave: () => void;
+    onCancel: () => void;
+}
+
+const PayoutDetailsModal: React.FC<PayoutDetailsModalProps> = ({ user, details, setDetails, onSave, onCancel }) => (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="w-full max-w-lg bg-gray-900/80 border border-brand-blue/30 rounded-lg p-6 shadow-glow-blue">
+            <h2 className="flex items-center gap-3 text-2xl font-orbitron font-bold text-white mb-2"><CreditCard size={24}/> Edit Payout Details</h2>
+            <p className="text-gray-400 mb-4">For user: <span className="font-bold">{user.username}</span></p>
+            <div className="space-y-4">
+                <div>
+                    <label htmlFor="paypal" className="flex items-center gap-2 text-sm font-bold text-gray-300 block mb-2"><Mail size={16}/> PayPal Email</label>
+                    <input
+                        id="paypal"
+                        type="email"
+                        value={details.paypal_email}
+                        onChange={(e) => setDetails({ ...details, paypal_email: e.target.value })}
+                        className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-md focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all"
+                        placeholder="artist@example.com"
+                    />
+                </div>
+                <div>
+                    <h3 className="flex items-center gap-2 text-lg font-orbitron text-gray-300 mt-4 mb-2"><Landmark size={20}/> Bank Account</h3>
+                    <div className="space-y-4">
+                        <input
+                            type="text"
+                            placeholder="IBAN"
+                            value={details.bank_account_iban}
+                            onChange={(e) => setDetails({ ...details, bank_account_iban: e.target.value })}
+                            className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-md focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all"
+                        />
+                        <input
+                            type="text"
+                            placeholder="SWIFT / BIC"
+                            value={details.bank_account_swift}
+                            onChange={(e) => setDetails({ ...details, bank_account_swift: e.target.value })}
+                            className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-md focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all"
+                        />
+                    </div>
+                </div>
+            </div>
+            <div className="flex justify-end gap-4 mt-6">
+                <button onClick={onCancel} className="py-2 px-4 font-semibold text-white bg-gray-600 rounded-md hover:bg-gray-500 transition-colors">Cancel</button>
+                <button onClick={onSave} className="py-2 px-4 font-bold text-black bg-brand-blue rounded-md hover:bg-brand-blue-light transition-colors">Save Details</button>
+            </div>
+        </div>
+    </div>
+);
+
+
 interface UserListProps {
     users: Profile[];
     onBanToggle: (userId: string, isBanned: boolean) => void;
+    onEditPayouts: (user: Profile) => void;
 }
-const UserList: React.FC<UserListProps> = ({ users, onBanToggle }) => (
+const UserList: React.FC<UserListProps> = ({ users, onBanToggle, onEditPayouts }) => (
     <>
         <div className="grid grid-cols-3 gap-4 font-bold text-brand-blue-light p-4">
             <span>Username</span>
@@ -306,7 +410,7 @@ const UserList: React.FC<UserListProps> = ({ users, onBanToggle }) => (
         </div>
         <div className="space-y-2">
             {users.filter(u => u.role !== UserRole.ADMIN).map(user => (
-                <UserListItem key={user.id} user={user} onBanToggle={onBanToggle} />
+                <UserListItem key={user.id} user={user} onBanToggle={onBanToggle} onEditPayouts={onEditPayouts} />
             ))}
         </div>
     </>
@@ -315,13 +419,17 @@ const UserList: React.FC<UserListProps> = ({ users, onBanToggle }) => (
 interface UserListItemProps {
     user: Profile;
     onBanToggle: (userId: string, isBanned: boolean) => void;
+    onEditPayouts: (user: Profile) => void;
 }
-const UserListItem: React.FC<UserListItemProps> = ({ user, onBanToggle }) => (
+const UserListItem: React.FC<UserListItemProps> = ({ user, onBanToggle, onEditPayouts }) => (
     <div className="grid grid-cols-3 gap-4 items-center p-4 bg-gray-900/50 rounded-lg hover:bg-gray-900/80 transition-colors">
         <span className="font-semibold">{user.username}</span>
         <span>{user.is_banned ? <span className="text-red-400 font-bold">Banned</span> : <span className="text-green-400 font-bold">Active</span>}</span>
-        <div className="text-right">
-            <button onClick={() => onBanToggle(user.id, !user.is_banned)} className={`font-bold py-1 px-3 rounded ${user.is_banned ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}>
+        <div className="text-right flex justify-end gap-2">
+            <button onClick={() => onEditPayouts(user)} className="font-bold py-1 px-3 rounded bg-brand-blue hover:bg-brand-blue-light text-black transition-colors">
+                Payouts
+            </button>
+            <button onClick={() => onBanToggle(user.id, !user.is_banned)} className={`font-bold py-1 px-3 rounded text-white transition-colors ${user.is_banned ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}>
                 {user.is_banned ? 'Unban' : 'Ban'}
             </button>
         </div>

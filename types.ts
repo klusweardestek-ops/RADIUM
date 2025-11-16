@@ -9,6 +9,9 @@ export interface Profile {
   username: string;
   role: UserRole;
   is_banned: boolean;
+  paypal_email?: string | null;
+  bank_account_iban?: string | null;
+  bank_account_swift?: string | null;
 }
 
 // FIX: Add the User interface. This type was missing, causing an import error

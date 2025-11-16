@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Song, Platform, SongStatus, Genre } from '../types';
 import { Plus, UploadCloud, Music, Calendar, Type, Hash, Users, Trash2, ChevronDown, Info } from 'lucide-react';
@@ -126,6 +127,26 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
         return publicUrl;
     };
 
+    const handleAudioFileSelect = (selectedFile: File | null) => {
+        if (selectedFile) {
+            const acceptedMimeTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'];
+            const acceptedExtensions = ['.mp3', '.wav'];
+
+            const fileExtension = '.' + selectedFile.name.split('.').pop()?.toLowerCase();
+            const isValid = acceptedMimeTypes.includes(selectedFile.type) || acceptedExtensions.includes(fileExtension);
+            
+            if (isValid) {
+                setAudioFile(selectedFile);
+                setError('');
+            } else {
+                setAudioFile(null);
+                setError('Invalid audio file type. Please upload an MP3 or WAV file.');
+            }
+        } else {
+            setAudioFile(null);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !coverArt || !audioFile || selectedPlatforms.length === 0 || !formData.album_title || !formData.artist_names || !formData.release_date || !formData.genre) {
@@ -193,7 +214,7 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
                          <FormInput icon={<Hash size={18} />} label="ISRC (Optional)" name="isrc" value={formData.isrc} onChange={(e) => setFormData({...formData, isrc: e.target.value})} />
                     </div>
                     <FileInput label="Cover Art" file={coverArt} setFile={setCoverArt} accept="image/*" required />
-                    <FileInput label="Audio File" file={audioFile} setFile={setAudioFile} accept="audio/mpeg,audio/wav,.mp3,.wav" required />
+                    <FileInput label="Audio File" file={audioFile} setFile={handleAudioFileSelect} accept="audio/mpeg,audio/wav,.mp3,.wav" required />
                 </div>
                 <div className="md:col-span-1 space-y-4 bg-gray-900/50 p-4 rounded-md border border-gray-700">
                     <h3 className="font-bold text-lg text-brand-blue-light">Distribution Platforms</h3>
@@ -270,19 +291,32 @@ interface FileInputProps {
     accept: string;
     required?: boolean;
 }
-const FileInput: React.FC<FileInputProps> = ({ label, file, setFile, accept, required }) => (
-    <div>
-        <label className="text-sm font-bold text-gray-300 block mb-2">{label}</label>
-        <label htmlFor={label} className="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-700 border-dashed rounded-lg cursor-pointer bg-gray-900/50 hover:bg-gray-900/80 transition-colors">
-            <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <UploadCloud className="w-8 h-8 mb-2 text-gray-400" />
-                <p className="text-sm text-gray-400"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-            </div>
-            <input id={label} type="file" className="hidden" accept={accept} onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} required={required} />
-        </label>
-        {file && <p className="text-xs text-brand-blue-light mt-1">{file.name}</p>}
-    </div>
-);
+const FileInput: React.FC<FileInputProps> = ({ label, file, setFile, accept, required }) => {
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // When the parent component nullifies the file (e.g., due to a validation error),
+    // we must clear the underlying input element's value. This ensures the `onChange`
+    // event will fire again if the user selects the same invalid file.
+    useEffect(() => {
+        if (file === null && inputRef.current) {
+            inputRef.current.value = '';
+        }
+    }, [file]);
+
+    return (
+        <div>
+            <label className="text-sm font-bold text-gray-300 block mb-2">{label}</label>
+            <label htmlFor={label} className="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-700 border-dashed rounded-lg cursor-pointer bg-gray-900/50 hover:bg-gray-900/80 transition-colors">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <UploadCloud className="w-8 h-8 mb-2 text-gray-400" />
+                    <p className="text-sm text-gray-400"><span className="font-semibold">Click to upload</span> or drag and drop</p>
+                </div>
+                <input ref={inputRef} id={label} type="file" className="hidden" accept={accept} onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} required={required} />
+            </label>
+            {file && <p className="text-xs text-brand-blue-light mt-1">{file.name}</p>}
+        </div>
+    );
+};
 
 
 interface SongListItemProps {

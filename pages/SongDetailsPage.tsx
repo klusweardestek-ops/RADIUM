@@ -76,11 +76,11 @@ const SongDetailsPage: React.FC = () => {
 
         const fetchSongDetails = async () => {
             try {
+                // 1. Fetch the core song data
                 const { data: song, error: songError } = await supabase
                     .from('songs')
-                    .select('*, profiles(username), song_status_history(*, profiles(username))')
+                    .select('*')
                     .eq('id', songId)
-                    .order('created_at', { foreignTable: 'song_status_history', ascending: false })
                     .single();
 
                 if (songError) throw songError;
@@ -90,12 +90,56 @@ const SongDetailsPage: React.FC = () => {
                     return;
                 }
 
+                // 2. Check authorization
                 if (!isAdmin && song.user_id !== profile.id) {
                     setError('You are not authorized to view this song.');
                     return;
                 }
+                
+                // 3. Fetch related data in parallel
+                const [uploaderProfileResponse, historyResponse] = await Promise.all([
+                    supabase.from('profiles').select('username').eq('id', song.user_id).single(),
+                    supabase.from('song_status_history').select('*').eq('song_id', songId).order('created_at', { ascending: false })
+                ]);
 
-                setSongDetails(song);
+                const { data: uploaderProfile, error: uploaderError } = uploaderProfileResponse;
+                if (uploaderError) console.error('Error fetching uploader profile:', uploaderError);
+
+                const { data: history, error: historyError } = historyResponse;
+                if (historyError) console.error('Error fetching song history:', historyError);
+                
+                let finalHistory: SongStatusHistory[] = [];
+
+                if (history && history.length > 0) {
+                    // 4. Fetch admin profiles for history entries
+                    const adminIds = [...new Set(history.map(h => h.user_id))];
+                    const { data: adminProfiles, error: adminsError } = await supabase
+                        .from('profiles')
+                        .select('id, username')
+                        .in('id', adminIds);
+                    
+                    if (adminsError) console.error('Error fetching admin profiles for history:', adminsError);
+
+                    const adminMap = new Map(adminProfiles?.map(p => [p.id, p.username]));
+                    
+                    finalHistory = history.map(h => ({
+                        ...h,
+                        profiles: {
+                            username: adminMap.get(h.user_id) || 'Unknown Admin'
+                        }
+                    }));
+                }
+
+                const fullSongDetails = {
+                    ...song,
+                    profiles: {
+                        username: uploaderProfile?.username || 'Unknown User'
+                    },
+                    song_status_history: finalHistory
+                };
+
+                setSongDetails(fullSongDetails as Song);
+
             } catch (err) {
                 console.error(err);
                 setError('Failed to load song details.');

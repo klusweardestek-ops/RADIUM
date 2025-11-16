@@ -17,18 +17,27 @@ const AdminPage: React.FC = () => {
 
     const loadData = useCallback(async () => {
         setLoading(true);
-        const { data: profilesData, error: profilesError } = await supabase
-            .from('profiles')
-            .select('*');
-        if (profilesError) console.error("Error fetching profiles:", profilesError);
-        else setUsers(profilesData || []);
 
-        const { data: songsData, error: songsError } = await supabase
-            .from('songs')
-            .select('*, profiles(username)') // Join with profiles table to get username
-            .order('created_at', { ascending: false });
-        if (songsError) console.error("Error fetching songs:", songsError);
-        else setSongs(songsData || []);
+        // Fetch profiles and songs concurrently for better performance
+        const [profilesResponse, songsResponse] = await Promise.all([
+            supabase.from('profiles').select('*'),
+            supabase.from('songs').select('*, profiles(username)').order('created_at', { ascending: false })
+        ]);
+
+        const { data: profilesData, error: profilesError } = profilesResponse;
+        if (profilesError) {
+            console.error("Error fetching profiles:", profilesError);
+        } else {
+            setUsers(profilesData || []);
+        }
+
+        const { data: songsData, error: songsError } = songsResponse;
+        if (songsError) {
+            console.error("Error fetching songs:", songsError);
+            setSongs([]);
+        } else {
+            setSongs(songsData || []);
+        }
         
         setLoading(false);
     }, []);

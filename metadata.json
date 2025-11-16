@@ -1,0 +1,5 @@
+{
+  "name": "RADIUM",
+  "description": "A futuristic music distribution platform for artists to upload and manage their releases. Features a user dashboard for song uploads and an admin panel for review and user management.",
+  "requestFramePermissions": []
+}

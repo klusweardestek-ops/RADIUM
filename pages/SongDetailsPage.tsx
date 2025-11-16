@@ -1,10 +1,65 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Song, SongStatus, UserRole } from '../types';
+import { Song, SongStatus, SongStatusHistory } from '../types';
 import { useAuth } from '../hooks/useAuth';
-import { ArrowLeft, Calendar, Hash, Users, CheckCircle, XCircle, Clock, ListMusic, Music } from 'lucide-react';
+import { ArrowLeft, Calendar, Hash, Users, CheckCircle, XCircle, Clock, ListMusic, Music, Info, MessageSquare, UserCheck } from 'lucide-react';
 import PlatformIcon from '../components/PlatformIcon';
 import { supabase } from '../services/supabaseClient';
+
+const historyIconMap = {
+    [SongStatus.APPROVED]: <CheckCircle className="w-5 h-5 text-green-400" />,
+    [SongStatus.REJECTED]: <XCircle className="w-5 h-5 text-red-400" />,
+    [SongStatus.PENDING]: <Clock className="w-5 h-5 text-yellow-400" />,
+};
+
+interface HistoryEntryProps {
+    entry: SongStatusHistory;
+    isLast: boolean;
+}
+
+const HistoryEntry: React.FC<HistoryEntryProps> = ({ entry, isLast }) => {
+    const formattedDate = new Date(entry.created_at).toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+    
+    return (
+        <div className="relative">
+            <div className="absolute -left-[31px] top-1 w-5 h-5 bg-gray-700 rounded-full border-4 border-black"></div>
+            {!isLast && <div className="absolute -left-[22px] top-8 h-full w-0.5 bg-brand-blue/20"></div>}
+            
+            <div className="flex items-center gap-3">
+                {historyIconMap[entry.status]}
+                <h3 className="font-bold text-lg text-white">
+                    Status changed to <span className={`font-extrabold ${entry.status === SongStatus.APPROVED ? 'text-green-400' : 'text-red-400'}`}>{entry.status}</span>
+                </h3>
+            </div>
+            <div className="pl-8 text-sm text-gray-400 mt-1 space-y-2">
+                <p className="flex items-center gap-2">
+                    <UserCheck size={16} />
+                    <span>By: <span className="font-semibold text-gray-300">{entry.profiles.username}</span></span>
+                </p>
+                <p className="flex items-center gap-2">
+                    <Clock size={16} />
+                    <span>{formattedDate}</span>
+                </p>
+                {entry.status === SongStatus.REJECTED && entry.reason && (
+                    <div className="pt-2">
+                         <p className="flex items-start gap-2 font-semibold text-red-400">
+                             <MessageSquare size={16} className="mt-0.5 flex-shrink-0" />
+                             <span>Admin Feedback:</span>
+                         </p>
+                         <p className="pl-1 text-gray-300 italic">"{entry.reason}"</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 const SongDetailsPage: React.FC = () => {
     const { songId } = useParams<{ songId: string }>();
@@ -23,8 +78,9 @@ const SongDetailsPage: React.FC = () => {
             try {
                 const { data: song, error: songError } = await supabase
                     .from('songs')
-                    .select('*, profiles(username)') // Fetches song and the related profile's username
+                    .select('*, profiles(username), song_status_history(*, profiles(username))')
                     .eq('id', songId)
+                    .order('created_at', { foreignTable: 'song_status_history', ascending: false })
                     .single();
 
                 if (songError) throw songError;
@@ -99,6 +155,13 @@ const SongDetailsPage: React.FC = () => {
                             <p className="text-xl text-gray-300 mt-2 flex items-center gap-2"><Users size={20} /> {songDetails.artist_names}</p>
                         </div>
 
+                        {songDetails.status === SongStatus.REJECTED && songDetails.rejection_reason && (
+                            <div className="p-4 bg-red-900/40 border border-red-500/50 rounded-lg">
+                                <h3 className="font-bold text-red-400 flex items-center gap-2 mb-2"><Info size={18}/> Rejection Feedback</h3>
+                                <p className="text-gray-300">{songDetails.rejection_reason}</p>
+                            </div>
+                        )}
+
                         <audio controls src={songDetails.audio_file_url} className="w-full" title={`Audio player for ${songDetails.album_title} by ${songDetails.artist_names}`} aria-label={`Audio player for ${songDetails.album_title} by ${songDetails.artist_names}`}>
                             Your browser does not support the audio element.
                         </audio>
@@ -126,6 +189,19 @@ const SongDetailsPage: React.FC = () => {
                         </div>
                     </div>
                 </div>
+                {songDetails.song_status_history && songDetails.song_status_history.length > 0 && (
+                    <div className="mt-8 pt-8 border-t border-brand-blue/20">
+                        <h2 className="text-2xl font-orbitron font-bold text-white mb-6" style={{ textShadow: '0 0 10px #00bfff' }}>
+                            Status History
+                        </h2>
+                        <div className="space-y-6 border-l-2 border-brand-blue/20 pl-6 relative">
+                            <div className="absolute -left-[11px] top-1 w-5 h-5 bg-brand-blue rounded-full border-4 border-black"></div>
+                            {songDetails.song_status_history.map((entry, index) => (
+                                <HistoryEntry key={entry.id} entry={entry} isLast={index === songDetails.song_status_history!.length - 1} />
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

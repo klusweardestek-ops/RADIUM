@@ -54,6 +54,16 @@ export enum Genre {
   OTHER = 'Other',
 }
 
+export interface SongStatusHistory {
+  id: string;
+  created_at: string;
+  status: SongStatus;
+  reason: string | null;
+  profiles: { // Admin who made the change
+    username: string;
+  };
+}
+
 // Represents song data stored in the 'songs' table.
 export interface Song {
   id: string;
@@ -69,5 +79,7 @@ export interface Song {
   genre: Genre;
   platforms: Platform[];
   status: SongStatus;
+  rejection_reason?: string | null;
   profiles?: { username: string }; // Optional relation for fetching uploader info
+  song_status_history?: SongStatusHistory[]; // Status change log
 }

@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Song, Platform, SongStatus, Genre } from '../types';
-import { Plus, UploadCloud, Music, Calendar, Type, Hash, Users, Trash2, ChevronDown } from 'lucide-react';
+import { Plus, UploadCloud, Music, Calendar, Type, Hash, Users, Trash2, ChevronDown, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 
@@ -320,6 +321,12 @@ const SongListItem: React.FC<SongListItemProps> = ({ song, onDelete }) => {
                     </button>
                 </div>
             </div>
+            {song.status === SongStatus.REJECTED && song.rejection_reason && (
+                <div className="mt-3 p-3 bg-red-900/30 border-l-4 border-red-500 rounded-r-md text-sm">
+                    <p className="font-bold text-red-400 flex items-center gap-2"><Info size={16}/> Rejection Reason:</p>
+                    <p className="text-gray-300 mt-1">{song.rejection_reason}</p>
+                </div>
+            )}
         </Link>
     );
 };

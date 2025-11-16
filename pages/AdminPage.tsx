@@ -18,15 +18,16 @@ const AdminPage: React.FC = () => {
     const loadData = useCallback(async () => {
         setLoading(true);
 
-        // Fetch profiles and songs concurrently for better performance
+        // Fetch all profiles and all songs concurrently.
         const [profilesResponse, songsResponse] = await Promise.all([
             supabase.from('profiles').select('*'),
-            supabase.from('songs').select('*, profiles(username)').order('created_at', { ascending: false })
+            supabase.from('songs').select('*').order('created_at', { ascending: false })
         ]);
 
         const { data: profilesData, error: profilesError } = profilesResponse;
         if (profilesError) {
             console.error("Error fetching profiles:", profilesError);
+            setUsers([]);
         } else {
             setUsers(profilesData || []);
         }
@@ -35,8 +36,19 @@ const AdminPage: React.FC = () => {
         if (songsError) {
             console.error("Error fetching songs:", songsError);
             setSongs([]);
+        } else if (songsData) {
+            // Join data on the client-side for robustness.
+            // This works even if DB foreign key relationships are not perfectly set up.
+            const profilesMap = new Map(profilesData?.map(p => [p.id, p.username]));
+            const songsWithUsernames = songsData.map(song => ({
+                ...song,
+                profiles: {
+                    username: profilesMap.get(song.user_id) || 'Unknown User'
+                }
+            }));
+            setSongs(songsWithUsernames as Song[]);
         } else {
-            setSongs(songsData || []);
+            setSongs([]);
         }
         
         setLoading(false);

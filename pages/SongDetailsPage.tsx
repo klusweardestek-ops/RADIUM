@@ -1,9 +1,10 @@
 
+
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Song, SongStatus, SongStatusHistory } from '../types';
 import { useAuth } from '../hooks/useAuth';
-import { ArrowLeft, Calendar, Hash, Users, CheckCircle, XCircle, Clock, ListMusic, Music, Info, MessageSquare, UserCheck } from 'lucide-react';
+import { ArrowLeft, Calendar, Hash, Users, CheckCircle, XCircle, Clock, ListMusic, Music, Info, MessageSquare, UserCheck, DownloadCloud } from 'lucide-react';
 import PlatformIcon from '../components/PlatformIcon';
 import { supabase } from '../services/supabaseClient';
 
@@ -150,6 +151,29 @@ const SongDetailsPage: React.FC = () => {
 
         fetchSongDetails();
     }, [songId, profile, isAdmin]);
+    
+    const handleDownload = async (url: string, baseFilename: string) => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok.');
+            const blob = await response.blob();
+            
+            const path = new URL(url).pathname;
+            const extension = path.split('.').pop() || 'file';
+            const finalFilename = `${baseFilename.replace(/[/\\?%*:|"<>]/g, '-')}.${extension}`;
+            
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = finalFilename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(link.href);
+        } catch (error) {
+            console.error('Download failed:', error);
+            alert('Failed to download file.');
+        }
+    };
 
     const getStatusInfo = (status: SongStatus) => {
         switch (status) {
@@ -205,6 +229,15 @@ const SongDetailsPage: React.FC = () => {
                                 <p className="text-gray-300">{songDetails.rejection_reason}</p>
                             </div>
                         )}
+                        
+                        <div className="flex flex-wrap gap-4">
+                            <button onClick={() => handleDownload(songDetails.cover_art_url, `cover_${songDetails.album_title}`)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                                <DownloadCloud size={18} /> Download Cover Art
+                            </button>
+                            <button onClick={() => handleDownload(songDetails.audio_file_url, `audio_${songDetails.album_title}`)} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                                <DownloadCloud size={18} /> Download Audio File
+                            </button>
+                        </div>
 
                         <audio controls src={songDetails.audio_file_url} className="w-full" title={`Audio player for ${songDetails.album_title} by ${songDetails.artist_names}`} aria-label={`Audio player for ${songDetails.album_title} by ${songDetails.artist_names}`}>
                             Your browser does not support the audio element.

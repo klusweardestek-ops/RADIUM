@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Profile, Song, SongStatus, UserRole } from '../types';
-import { ShieldCheck, Users, Music, CheckCircle, XCircle, Trash2, Eye, Calendar, CreditCard, Mail, Landmark } from 'lucide-react';
+import { ShieldCheck, Users, Music, CheckCircle, XCircle, Trash2, Eye, Calendar, CreditCard, Mail, Landmark, DownloadCloud } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PlatformIcon from '../components/PlatformIcon';
 import { supabase } from '../services/supabaseClient';
@@ -130,6 +130,29 @@ const AdminPage: React.FC = () => {
             else loadData();
         }
     };
+    
+    const handleDownload = async (url: string, baseFilename: string) => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok.');
+            const blob = await response.blob();
+            
+            const path = new URL(url).pathname;
+            const extension = path.split('.').pop() || 'file';
+            const finalFilename = `${baseFilename.replace(/[/\\?%*:|"<>]/g, '-')}.${extension}`;
+            
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = finalFilename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(link.href);
+        } catch (error) {
+            console.error('Download failed:', error);
+            alert('Failed to download file.');
+        }
+    };
 
     const handleEditPayoutsClick = (user: Profile) => {
         setEditingUser(user);
@@ -195,6 +218,7 @@ const AdminPage: React.FC = () => {
                                     onApprove={handleApproveSong}
                                     onReject={handleRejectClick}
                                     onDelete={handleDeleteSong}
+                                    onDownload={handleDownload}
                                 />
                             )) : <p className="text-gray-400">No songs found for this filter.</p>}
                         </div>
@@ -246,15 +270,10 @@ interface AdminSongCardProps {
     onApprove: (songId: string) => void;
     onReject: (song: Song) => void;
     onDelete: (songId: string) => void;
+    onDownload: (url: string, baseFilename: string) => void;
 }
 
-const AdminSongCard: React.FC<AdminSongCardProps> = ({ song, onApprove, onReject, onDelete }) => {
-    const handleActionClick = (e: React.MouseEvent, action: () => void) => {
-        e.preventDefault();
-        e.stopPropagation();
-        action();
-    };
-    
+const AdminSongCard: React.FC<AdminSongCardProps> = ({ song, onApprove, onReject, onDelete, onDownload }) => {
     const statusStyles: { [key in SongStatus]: { text: string; bg: string; border: string } } = {
         [SongStatus.PENDING]: { text: 'text-yellow-300', bg: 'bg-yellow-900/50', border: 'border-yellow-500/50' },
         [SongStatus.APPROVED]: { text: 'text-green-300', bg: 'bg-green-900/50', border: 'border-green-500/50' },
@@ -263,7 +282,7 @@ const AdminSongCard: React.FC<AdminSongCardProps> = ({ song, onApprove, onReject
     const currentStatusStyle = statusStyles[song.status];
 
     return (
-        <Link to={`/song/${song.id}`} className="block bg-gray-900/50 p-4 rounded-lg border border-gray-800 transition-all hover:border-brand-blue/50 cursor-pointer">
+        <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-800 transition-all hover:border-brand-blue/50">
             <div className="flex flex-col md:flex-row gap-4">
                 <img src={song.cover_art_url} alt={song.album_title} className="w-full md:w-24 h-auto md:h-24 object-cover rounded-md"/>
                 <div className="flex-grow">
@@ -297,19 +316,21 @@ const AdminSongCard: React.FC<AdminSongCardProps> = ({ song, onApprove, onReject
                     <div className="min-h-[40px] flex items-center">
                         {song.status === SongStatus.PENDING && (
                             <div className="flex gap-2 w-full">
-                                <button onClick={(e) => handleActionClick(e, () => onApprove(song.id))} className="flex-1 flex justify-center items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors"><CheckCircle size={18} /> Approve</button>
-                                <button onClick={(e) => handleActionClick(e, () => onReject(song))} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded transition-colors"><XCircle size={18} /> Reject</button>
+                                <button onClick={() => onApprove(song.id)} className="flex-1 flex justify-center items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors"><CheckCircle size={18} /> Approve</button>
+                                <button onClick={() => onReject(song)} className="flex-1 flex justify-center items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded transition-colors"><XCircle size={18} /> Reject</button>
                             </div>
                         )}
                     </div>
                     
-                    <div className="flex items-center gap-2 mt-auto">
-                        <span className="flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors" role="button" aria-label="View song details"><Eye size={18} /> Details</span>
-                        <button onClick={(e) => handleActionClick(e, () => onDelete(song.id))} className="flex justify-center items-center gap-2 bg-gray-700 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors"><Trash2 size={18} /> Delete</button>
+                    <div className="flex flex-wrap items-center justify-end gap-2 mt-auto">
+                        <Link to={`/song/${song.id}`} className="flex justify-center items-center gap-2 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors"><Eye size={18} /> Details</Link>
+                        <button onClick={() => onDownload(song.cover_art_url, `cover_${song.album_title}`)} className="flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors"><DownloadCloud size={18} /> Cover</button>
+                        <button onClick={() => onDownload(song.audio_file_url, `audio_${song.album_title}`)} className="flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded transition-colors"><DownloadCloud size={18} /> Audio</button>
+                        <button onClick={() => onDelete(song.id)} className="flex justify-center items-center gap-2 bg-gray-700 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors"><Trash2 size={18} /> Delete</button>
                     </div>
                 </div>
             </div>
-        </Link>
+        </div>
     );
 };
 

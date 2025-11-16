@@ -1,15 +1,24 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../services/supabaseClient';
+import { UserRole } from '../types';
 
 const RegisterPage: React.FC = () => {
     const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-    const { register } = useAuth();
+    const { session } = useAuth();
+
+    useEffect(() => {
+        if (session) {
+            navigate('/dashboard');
+        }
+    }, [session, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -18,17 +27,44 @@ const RegisterPage: React.FC = () => {
             return;
         }
         setError('');
+        setLoading(true);
         try {
-            const user = await register(username, password);
-            if (user) {
-                navigate('/dashboard');
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        username: username,
+                    }
+                }
+            });
+
+            if (authError) {
+                setError(authError.message);
+                setLoading(false);
+                return;
+            }
+
+            if (authData.user) {
+                // Create a profile entry for the new user
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .insert({ 
+                        id: authData.user.id, 
+                        username: username,
+                        role: UserRole.USER,
+                        is_banned: false
+                    });
+
+                if (profileError) {
+                    setError(`Account created, but failed to set up profile: ${profileError.message}`);
+                }
+                // The onAuthStateChange listener will handle navigation
             }
         } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message);
-            } else {
-                setError('An unknown error occurred.');
-            }
+            setError('An unknown error occurred.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -45,6 +81,17 @@ const RegisterPage: React.FC = () => {
                             id="username"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
+                            className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-md focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all"
+                            required
+                        />
+                    </div>
+                     <div>
+                        <label htmlFor="email" className="text-sm font-bold text-gray-300 block mb-2">Email</label>
+                        <input
+                            type="email"
+                            id="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-md focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all"
                             required
                         />
@@ -71,8 +118,8 @@ const RegisterPage: React.FC = () => {
                             required
                         />
                     </div>
-                    <button type="submit" className="w-full py-3 font-bold text-black bg-brand-blue rounded-md hover:bg-brand-blue-light hover:shadow-glow-blue transition-all duration-300 transform hover:scale-105">
-                        Register
+                    <button type="submit" disabled={loading} className="w-full py-3 font-bold text-black bg-brand-blue rounded-md hover:bg-brand-blue-light hover:shadow-glow-blue transition-all duration-300 transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                        {loading ? 'Creating Account...' : 'Register'}
                     </button>
                 </form>
                 <p className="text-center text-gray-400">

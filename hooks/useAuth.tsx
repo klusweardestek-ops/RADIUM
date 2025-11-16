@@ -1,64 +1,98 @@
-
-import React, { createContext, useContext, useState, useMemo, ReactNode, useCallback } from 'react';
-import { User, UserRole } from '../types';
-import { storageService } from '../services/storageService';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../services/supabaseClient';
+import { Session, User } from '@supabase/supabase-js';
+import { Profile, UserRole } from '../types';
 
 interface AuthContextType {
-  currentUser: User | null;
-  login: (username: string, password: string) => Promise<User | null>;
-  logout: () => void;
-  register: (username: string, password: string) => Promise<User | null>;
-  updateUser: (updatedUser: User) => void;
+  session: Session | null;
+  user: User | null;
+  profile: Profile | null;
+  loading: boolean;
+  logout: () => Promise<void>;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const userJson = localStorage.getItem('currentUser');
-    return userJson ? JSON.parse(userJson) : null;
-  });
-  
-  const login = useCallback(async (username: string, password: string): Promise<User | null> => {
-    const user = storageService.validateUser(username, password);
-    if (user && !user.isBanned) {
-      localStorage.setItem('currentUser', JSON.stringify(user));
-      setCurrentUser(user);
-      return user;
-    }
-    if (user && user.isBanned) {
-      throw new Error("This account has been banned.");
-    }
-    return null;
-  }, []);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('currentUser');
-    setCurrentUser(null);
-  }, []);
-
-  const register = useCallback(async (username: string, password: string): Promise<User | null> => {
-    try {
-      const newUser = storageService.addUser(username, password);
-      localStorage.setItem('currentUser', JSON.stringify(newUser));
-      setCurrentUser(newUser);
-      return newUser;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(error.message);
+  useEffect(() => {
+    const fetchSession = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Error getting session:', error);
+        setLoading(false);
+        return;
       }
-      throw new Error("An unknown error occurred during registration.");
-    }
-  }, []);
-  
-  const updateUser = useCallback((updatedUser: User) => {
-    setCurrentUser(updatedUser);
-    localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+        } else {
+          setProfile(userProfile);
+        }
+      }
+      setLoading(false);
+    };
+
+    fetchSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        setLoading(true);
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profileError) {
+            console.error('Error fetching profile on state change:', profileError);
+            setProfile(null);
+        } else {
+            setProfile(userProfile);
+        }
+        setLoading(false);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
-  const value = useMemo(() => ({ currentUser, login, logout, register, updateUser }), [currentUser, login, logout, register, updateUser]);
+  const logout = async () => {
+    await supabase.auth.signOut();
+  };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const value = {
+    session,
+    user,
+    profile,
+    loading,
+    logout,
+    isAdmin: profile?.role === UserRole.ADMIN,
+  };
+
+  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

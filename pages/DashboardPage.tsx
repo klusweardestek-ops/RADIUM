@@ -1,65 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { storageService } from '../services/storageService';
 import { Song, Platform, SongStatus, Genre } from '../types';
 import { Plus, UploadCloud, Music, Calendar, Type, Hash, Users, Trash2, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { supabase } from '../services/supabaseClient';
 
 const platforms = Object.values(Platform);
 const genres = Object.values(Genre);
 
-type SongForState = Song & { coverArtUrl: string };
-
 const DashboardPage: React.FC = () => {
-    const { currentUser } = useAuth();
-    const [songs, setSongs] = useState<SongForState[]>([]);
+    const { user } = useAuth();
+    const [songs, setSongs] = useState<Song[]>([]);
     const [showForm, setShowForm] = useState(false);
     
-    useEffect(() => {
-        let createdUrls: string[] = [];
-        const loadSongs = async () => {
-            if (currentUser) {
-                const userSongs = await storageService.getSongsByUserId(currentUser.id);
-                const songsWithUrls = userSongs.map(song => {
-                    const url = URL.createObjectURL(song.coverArt);
-                    createdUrls.push(url);
-                    return { ...song, coverArtUrl: url };
-                });
-                setSongs(songsWithUrls);
-            }
-        };
-
-        loadSongs();
-
-        return () => {
-            createdUrls.forEach(url => URL.revokeObjectURL(url));
-        };
-    }, [currentUser]);
-
-    const handleSongAdded = async () => {
-        if (currentUser) {
-            const userSongs = await storageService.getSongsByUserId(currentUser.id);
-            // Clean up old URLs before creating new ones
-            songs.forEach(s => URL.revokeObjectURL(s.coverArtUrl));
+    const loadSongs = useCallback(async () => {
+        if (user) {
+            const { data, error } = await supabase
+                .from('songs')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
             
-            const songsWithUrls = userSongs.map(song => ({
-                ...song,
-                coverArtUrl: URL.createObjectURL(song.coverArt)
-            }));
-            setSongs(songsWithUrls);
+            if (error) {
+                console.error("Error fetching songs:", error);
+            } else {
+                setSongs(data);
+            }
         }
-    };
+    }, [user]);
+
+    useEffect(() => {
+        loadSongs();
+    }, [loadSongs]);
 
     const handleDeleteSong = async (songId: string) => {
         if(window.confirm('Are you sure you want to delete this song? This action cannot be undone.')) {
-            await storageService.deleteSong(songId);
-            setSongs(prevSongs => {
-                const songToDelete = prevSongs.find(s => s.id === songId);
-                if (songToDelete) {
-                    URL.revokeObjectURL(songToDelete.coverArtUrl);
-                }
-                return prevSongs.filter(song => song.id !== songId)
-            });
+            const songToDelete = songs.find(s => s.id === songId);
+            if (!songToDelete) return;
+
+            // Delete files from storage first
+            const coverArtPath = songToDelete.cover_art_url.split('/').pop();
+            const audioFilePath = songToDelete.audio_file_url.split('/').pop();
+
+            if (coverArtPath) await supabase.storage.from('cover-art').remove([coverArtPath]);
+            if (audioFilePath) await supabase.storage.from('audio-files').remove([audioFilePath]);
+
+            // Then delete the record from the database
+            const { error } = await supabase.from('songs').delete().eq('id', songId);
+            if (error) {
+                alert(`Failed to delete song: ${error.message}`);
+            } else {
+                setSongs(prevSongs => prevSongs.filter(song => song.id !== songId));
+            }
         }
     };
 
@@ -75,7 +67,7 @@ const DashboardPage: React.FC = () => {
                 </button>
             </div>
 
-            {showForm && <SongUploadForm onSongAdded={handleSongAdded} />}
+            {showForm && <SongUploadForm onSongAdded={loadSongs} />}
 
             <div className="mt-8 bg-black/30 backdrop-blur-sm rounded-lg border border-brand-blue/20 p-6">
                 <h2 className="text-2xl font-orbitron mb-4">Uploaded Songs</h2>
@@ -98,11 +90,11 @@ interface SongUploadFormProps {
 }
 
 const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
-    const { currentUser } = useAuth();
+    const { user } = useAuth();
     const [formData, setFormData] = useState({
-        releaseDate: '',
-        albumTitle: '',
-        artistNames: '',
+        release_date: '',
+        album_title: '',
+        artist_names: '',
         genre: '',
         upc: '',
         isrc: '',
@@ -121,10 +113,21 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
             : [...prev, platform]
         );
     };
+    
+    const uploadFile = async (file: File, bucket: 'cover-art' | 'audio-files'): Promise<string> => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user!.id}-${Date.now()}.${fileExt}`;
+        const { data, error } = await supabase.storage.from(bucket).upload(fileName, file);
+        if (error) {
+            throw new Error(`Failed to upload to ${bucket}: ${error.message}`);
+        }
+        const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(data.path);
+        return publicUrl;
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentUser || !coverArt || !audioFile || selectedPlatforms.length === 0 || !formData.albumTitle || !formData.artistNames || !formData.releaseDate || !formData.genre) {
+        if (!user || !coverArt || !audioFile || selectedPlatforms.length === 0 || !formData.album_title || !formData.artist_names || !formData.release_date || !formData.genre) {
             setError('Please fill all required fields, upload files, select a genre, and select at least one platform.');
             return;
         }
@@ -133,25 +136,27 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
         setSuccessMessage('');
         
         try {
-            const newSongData = {
-                userId: currentUser.id,
-                releaseDate: formData.releaseDate,
-                albumTitle: formData.albumTitle,
-                artistNames: formData.artistNames,
-                genre: formData.genre as Genre,
-                upc: formData.upc,
-                isrc: formData.isrc,
-                coverArt: coverArt,
-                coverArtName: coverArt.name,
-                audioFile: audioFile,
-                audioFileName: audioFile.name,
-                platforms: selectedPlatforms,
-            };
+            const coverArtUrl = await uploadFile(coverArt, 'cover-art');
+            const audioFileUrl = await uploadFile(audioFile, 'audio-files');
             
-            await storageService.addSong(newSongData);
+            const newSongData = {
+                ...formData,
+                user_id: user.id,
+                genre: formData.genre as Genre,
+                platforms: selectedPlatforms,
+                cover_art_url: coverArtUrl,
+                audio_file_url: audioFileUrl,
+                status: SongStatus.PENDING,
+            };
+
+            const { error: insertError } = await supabase.from('songs').insert(newSongData);
+
+            if (insertError) {
+                throw new Error(insertError.message);
+            }
 
             setSuccessMessage('Release submitted successfully! It will now be reviewed.');
-            setFormData({ releaseDate: '', albumTitle: '', artistNames: '', genre: '', upc: '', isrc: '' });
+            setFormData({ release_date: '', album_title: '', artist_names: '', genre: '', upc: '', isrc: '' });
             setCoverArt(null);
             setAudioFile(null);
             setSelectedPlatforms([]);
@@ -161,7 +166,7 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
             setTimeout(() => setSuccessMessage(''), 5000);
 
         } catch (err) {
-            setError('Failed to upload song. Please try again.');
+            setError(err instanceof Error ? err.message : 'Failed to upload song. Please try again.');
             console.error(err);
         } finally {
             setIsLoading(false);
@@ -175,13 +180,13 @@ const SongUploadForm: React.FC<SongUploadFormProps> = ({ onSongAdded }) => {
              {error && <p className="text-red-500 text-center bg-red-500/10 p-2 rounded-md mb-4">{error}</p>}
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="md:col-span-2 space-y-4">
-                    <FormInput icon={<Type size={18} />} label="Album Title" name="albumTitle" value={formData.albumTitle} onChange={(e) => setFormData({...formData, albumTitle: e.target.value})} required />
-                    <FormInput icon={<Users size={18} />} label="Artist Name(s)" name="artistNames" value={formData.artistNames} onChange={(e) => setFormData({...formData, artistNames: e.target.value})} required />
+                    <FormInput icon={<Type size={18} />} label="Album Title" name="album_title" value={formData.album_title} onChange={(e) => setFormData({...formData, album_title: e.target.value})} required />
+                    <FormInput icon={<Users size={18} />} label="Artist Name(s)" name="artist_names" value={formData.artist_names} onChange={(e) => setFormData({...formData, artist_names: e.target.value})} required />
                     <FormSelect icon={<Music size={18} />} label="Genre" name="genre" value={formData.genre} onChange={(e) => setFormData({...formData, genre: e.target.value})} required>
                         <option value="" disabled>Select a genre</option>
                         {genres.map(g => <option key={g} value={g}>{g}</option>)}
                     </FormSelect>
-                    <FormInput icon={<Calendar size={18} />} label="Release Date" name="releaseDate" type="date" value={formData.releaseDate} onChange={(e) => setFormData({...formData, releaseDate: e.target.value})} required />
+                    <FormInput icon={<Calendar size={18} />} label="Release Date" name="release_date" type="date" value={formData.release_date} onChange={(e) => setFormData({...formData, release_date: e.target.value})} required />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                          <FormInput icon={<Hash size={18} />} label="UPC (Optional)" name="upc" value={formData.upc} onChange={(e) => setFormData({...formData, upc: e.target.value})} />
                          <FormInput icon={<Hash size={18} />} label="ISRC (Optional)" name="isrc" value={formData.isrc} onChange={(e) => setFormData({...formData, isrc: e.target.value})} />
@@ -280,7 +285,7 @@ const FileInput: React.FC<FileInputProps> = ({ label, file, setFile, accept, req
 
 
 interface SongListItemProps {
-    song: SongForState;
+    song: Song;
     onDelete: (songId: string) => void;
 }
 const SongListItem: React.FC<SongListItemProps> = ({ song, onDelete }) => {
@@ -300,10 +305,10 @@ const SongListItem: React.FC<SongListItemProps> = ({ song, onDelete }) => {
         <Link to={`/song/${song.id}`} className="block p-4 bg-gray-900/50 rounded-lg border border-gray-800 hover:border-brand-blue/50 transition-all cursor-pointer">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <img src={song.coverArtUrl} alt={song.albumTitle} className="w-16 h-16 object-cover rounded-md"/>
+                    <img src={song.cover_art_url} alt={song.album_title} className="w-16 h-16 object-cover rounded-md"/>
                     <div>
-                        <h3 className="text-lg font-bold text-white">{song.albumTitle}</h3>
-                        <p className="text-sm text-gray-400">{song.artistNames}</p>
+                        <h3 className="text-lg font-bold text-white">{song.album_title}</h3>
+                        <p className="text-sm text-gray-400">{song.artist_names}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-4 mt-4 md:mt-0">

@@ -3,10 +3,21 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
+// Represents the public profile data stored in the 'profiles' table.
+export interface Profile {
+  id: string;
+  username: string;
+  role: UserRole;
+  is_banned: boolean;
+}
+
+// FIX: Add the User interface. This type was missing, causing an import error
+// in services/storageService.ts. This interface represents the user model
+// for the legacy localStorage-based authentication.
 export interface User {
   id: string;
   username: string;
-  password; // In a real app, this would be a hash
+  password: string;
   role: UserRole;
   isBanned: boolean;
 }
@@ -43,19 +54,20 @@ export enum Genre {
   OTHER = 'Other',
 }
 
+// Represents song data stored in the 'songs' table.
 export interface Song {
   id: string;
-  userId: string;
-  releaseDate: string;
-  coverArt: File; // Changed from Base64 string to File object
-  coverArtName: string;
-  audioFile: File; // Changed from Base64 string to File object
-  audioFileName: string;
+  user_id: string;
+  created_at: string;
+  release_date: string;
+  cover_art_url: string;
+  audio_file_url: string;
   upc?: string;
   isrc?: string;
-  albumTitle: string;
-  artistNames: string;
+  album_title: string;
+  artist_names: string;
   genre: Genre;
   platforms: Platform[];
   status: SongStatus;
+  profiles?: { username: string }; // Optional relation for fetching uploader info
 }

@@ -1,36 +1,41 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../services/supabaseClient';
 import { UserRole } from '../types';
 
 const LoginPage: React.FC = () => {
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-    const { login } = useAuth();
+    const { session, isAdmin } = useAuth();
+
+    useEffect(() => {
+        if (session) {
+            navigate(isAdmin ? '/admin' : '/dashboard');
+        }
+    }, [session, isAdmin, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setLoading(true);
         try {
-            const user = await login(username, password);
-            if (user) {
-                if(user.role === UserRole.ADMIN) {
-                    navigate('/admin');
-                } else {
-                    navigate('/dashboard');
-                }
-            } else {
-                setError('Invalid username or password.');
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+
+            if (error) {
+                setError(error.message);
             }
+            // The onAuthStateChange listener in useAuth will handle navigation
         } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message);
-            } else {
-                setError('An unexpected error occurred.');
-            }
+            setError('An unexpected error occurred.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -41,12 +46,12 @@ const LoginPage: React.FC = () => {
                 {error && <p className="text-red-500 text-center bg-red-500/10 p-2 rounded-md">{error}</p>}
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label htmlFor="username" className="text-sm font-bold text-gray-300 block mb-2">Username</label>
+                        <label htmlFor="email" className="text-sm font-bold text-gray-300 block mb-2">Email</label>
                         <input
-                            type="text"
-                            id="username"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
+                            type="email"
+                            id="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-md focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all"
                             required
                         />
@@ -62,8 +67,8 @@ const LoginPage: React.FC = () => {
                             required
                         />
                     </div>
-                    <button type="submit" className="w-full py-3 font-bold text-black bg-brand-blue rounded-md hover:bg-brand-blue-light hover:shadow-glow-blue transition-all duration-300 transform hover:scale-105">
-                        Log In
+                    <button type="submit" disabled={loading} className="w-full py-3 font-bold text-black bg-brand-blue rounded-md hover:bg-brand-blue-light hover:shadow-glow-blue transition-all duration-300 transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                        {loading ? 'Logging in...' : 'Log In'}
                     </button>
                 </form>
                 <p className="text-center text-gray-400">

@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const HomePage: React.FC = () => {
-    const { currentUser } = useAuth();
+    const { session } = useAuth();
 
     return (
         <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-100px)]">
@@ -15,7 +14,7 @@ const HomePage: React.FC = () => {
                 Your Music. Your Future. Amplified. Distribute your tracks to the world's biggest platforms with unparalleled ease and speed.
             </p>
             <div className="animate-fade-in-up" style={{ animationDelay: '1s' }}>
-                {currentUser ? (
+                {session ? (
                     <Link
                         to="/dashboard"
                         className="bg-brand-blue text-black font-bold py-3 px-8 rounded-full text-lg hover:bg-brand-blue-light hover:shadow-glow-blue transition-all duration-300 transform hover:scale-105"

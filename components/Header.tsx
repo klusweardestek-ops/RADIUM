@@ -1,16 +1,14 @@
-
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { UserRole } from '../types';
 import { LogOut, Music, UserCircle, ShieldCheck } from 'lucide-react';
 
 const Header: React.FC = () => {
-  const { currentUser, logout } = useAuth();
+  const { profile, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -21,10 +19,10 @@ const Header: React.FC = () => {
           RADIUM
         </Link>
         <div className="flex items-center space-x-4">
-          {currentUser ? (
+          {profile ? (
             <>
-              <span className="text-gray-300 hidden sm:inline">Welcome, {currentUser.username}</span>
-              {currentUser.role === UserRole.ADMIN && (
+              <span className="text-gray-300 hidden sm:inline">Welcome, {profile.username}</span>
+              {isAdmin && (
                 <NavLink to="/admin" icon={<ShieldCheck size={20} />} label="Admin" />
               )}
               <NavLink to="/dashboard" icon={<Music size={20} />} label="Dashboard" />

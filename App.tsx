@@ -11,8 +11,14 @@ import ProfilePage from './pages/ProfilePage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { UserRole } from './types';
 import SongDetailsPage from './pages/SongDetailsPage';
+import { isSupabaseConfigured } from './services/supabaseClient';
+import SetupGuide from './components/SetupGuide';
 
 const App: React.FC = () => {
+  if (!isSupabaseConfigured) {
+    return <SetupGuide />;
+  }
+
   return (
     <Layout>
       <Routes>

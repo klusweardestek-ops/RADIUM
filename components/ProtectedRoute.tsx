@@ -1,4 +1,3 @@
-
 import React, { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -10,14 +9,22 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
-  const { currentUser } = useAuth();
+  const { profile, loading, session } = useAuth();
   const location = useLocation();
 
-  if (!currentUser) {
+  if (loading) {
+    return (
+        <div className="flex items-center justify-center h-screen">
+            <div className="text-white text-xl">Loading...</div>
+        </div>
+    );
+  }
+
+  if (!session || !profile) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (currentUser.isBanned) {
+  if (profile.is_banned) {
       return (
         <div className="flex flex-col items-center justify-center h-screen text-center">
             <h1 className="text-4xl font-bold text-red-500 mb-4">Access Denied</h1>
@@ -26,7 +33,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     );
   }
 
-  if (!allowedRoles.includes(currentUser.role)) {
+  if (!allowedRoles.includes(profile.role)) {
     return (
         <div className="flex flex-col items-center justify-center h-screen text-center">
             <h1 className="text-4xl font-bold text-red-500 mb-4">Unauthorized</h1>
